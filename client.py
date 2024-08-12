@@ -1,81 +1,105 @@
-import asyncio, curses, threading
+import asyncio, curses, threading, time
 from datetime import datetime
 
 # Chat history
-chat_history = []
+chat_history: list[str] = []
 
-# Client Code
-async def receive_messages(reader, chat_window, height):
+# Last message
+last_message = ""
+
+# Function to handle receiving messages
+async def receive_messages(reader: asyncio.StreamReader, chat_window: curses.window):
     while True:
         data = await reader.read(100)
         if not data:
             break
         message = data.decode()
         chat_history.append(message)
+
+# Function to handle updating the chat window
+def update_chat_window(chat_window: curses.window):
+    while True:
         chat_window.clear()
-        for i, msg in enumerate(chat_history[-(height-4):]):
+        for i, msg in enumerate(chat_history[-(chat_window.getmaxyx()[0]-1):]):
             chat_window.addstr(i, 0, msg)
+            if i == len(chat_history) - 1:
+                chat_window.addstr(i, 0, last_message)
+
         chat_window.refresh()
 
-async def send_message(writer, message):
-    writer.write(message.encode())
-    await writer.drain()
+# Main function
+def main(stdscr):
+    global last_message
+    # Clear screen
+    stdscr.clear()
 
-# Chat client
-async def chat_client(stdscr: curses.window, reader: asyncio.ReadTransport, writer: asyncio.WriteTransport):
-    curses.echo()
+    # Get screen height and width
     height, width = stdscr.getmaxyx()
 
-    # Create windows
-    user_info = curses.newwin(1, width, 0, 0)
-    chat_window = curses.newwin(height - 3, width, 0, 0)
-    input_window = curses.newwin(1, width, height - 2, 0)
-
-    # Start the receive_messages coroutine
-    asyncio.create_task(receive_messages(reader, chat_window, height))
+    # Create a title bar
+    title_bar = curses.newwin(1, width-2, 1, 1)
+    title_bar.addstr("Welcome to the chat!")
+    title_bar.refresh()
     
-    input_window.clear()
-    input_window.addstr(0, 1, "Username: ")
-    input_window.refresh()
+    # Create a chat window
+    chat_window = curses.newwin(height-5, width-2, 3, 1)
+    
+    # Create an input window
+    input_window = curses.newwin(1, width-2, height-2, 1)
+
+    # Create a new event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Connect to the server
+    reader, writer = loop.run_until_complete(asyncio.open_connection('127.0.0.1', 8888))
+    
+    # Handle updating the chat window
+    chat_thread = threading.Thread(target=update_chat_window, args=(chat_window,))
+    chat_thread.daemon = True
+    chat_thread.start()
+    
+    # Get user name
+    input_window.addstr("Enter your name: ")
     curses.echo()
-    username = input_window.getstr(0, 11).decode("utf-8")
+    user_name = input_window.getstr().decode()
     curses.noecho()
+    writer.write(user_name.encode())
+    loop.run_until_complete(writer.drain())
     
-    user_info.addstr(0, 0, f"Username: {username}")
-    user_info.refresh()
+    # Start receiving messages
+    loop.create_task(receive_messages(reader, chat_window))
     
-    await send_message(writer, username)
-    
-    # Send messages
+    # Start sending messages
     while True:
-        # Get user input
         input_window.clear()
-        input_window.addstr(1, 1, "Message: ")
-        input_window.refresh()
+        input_window.addstr(f"{user_name}: ")
         curses.echo()
-        user_input = input_window.getstr(1, 10).decode("utf-8")
+        user_input = input_window.getstr().decode()
         curses.noecho()
-
-        # Check if user wants to quit
-        if user_input.lower() == "exit":
-            break
-
-        # Add timestamp and message to chat history
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        message = f"[{timestamp}] - {username}: {user_input}"
-        chat_history.append(message)
+        input_window.refresh()
         
-        # Send message to server
-        await send_message(writer, message)
+        if user_input.lower() == "quit":
+            exit_message = f"{user_name} has left the chat."
+            writer.write(exit_message.encode())
+            loop.run_until_complete(writer.drain())
+            
+            break
+        
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        message = f"[{timestamp}] - {user_name}: {user_input}\n"
+        last_message = message
+        writer.write(message.encode())
+        loop.run_until_complete(writer.drain())
+        input_window.clear()
         
     writer.close()
-    await writer.wait_closed()
-
-async def main(stdscr):
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-    await chat_client(stdscr, reader, writer)
+    loop.run_until_complete(writer.wait_closed())
+    
+    loop.close()
 
 if __name__ == "__main__":
-    # Start the server in a separate thread
-    asyncio.get_event_loop()\
-        .run_until_complete(asyncio.gather(curses.wrapper(main)))
+    try:
+        curses.wrapper(main)
+    except:
+        pass

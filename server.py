@@ -1,7 +1,5 @@
 import asyncio
 
-chats = []
-
 clients = []
 
 # Server Code
@@ -11,15 +9,15 @@ async def handle_client(reader: asyncio.ReadTransport, writer: asyncio.WriteTran
     
     if not addr in clients:
         name = await reader.read(100)
-        clients.append(addr)
-        print(f"Name {name.decode()} from {addr}")
+        name = name.decode()
+        clients.append({
+            "addr": addr,
+            "writer": writer,
+            "reader": reader,
+        })
+        print(f"Name {name} from {addr}")
         
-        writer.write("Welcome to the chat!".encode())
-
-        if chats:
-            for chat in chats:
-                writer.write(chat.encode())
-                await writer.drain()
+        writer.write(f"Welcome {name} to the chat!\n".encode())
 
     while True:
         data = await reader.read(100)
@@ -28,6 +26,13 @@ async def handle_client(reader: asyncio.ReadTransport, writer: asyncio.WriteTran
         message = data.decode()
         print(f"Received {message}")
         writer.write(message.encode())
+        
+        # Broadcast message to all clients
+        for client in clients:
+            if client["addr"] != addr:
+                client["writer"].write(message.encode())
+                client["writer"].write("\n".encode())
+        
         await writer.drain()
 
     print(f"Connection closed from {addr}")
