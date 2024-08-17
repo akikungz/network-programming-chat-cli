@@ -1,4 +1,4 @@
-import socket, threading, datetime, json
+import socket, threading, datetime, json, time
 
 # Room object
 rooms: dict[str, list[dict]] = {}
@@ -11,6 +11,31 @@ server.bind(('0.0.0.0', 8081))
 
 # Listen for incoming connections
 server.listen()
+
+# Leave the room
+def leave_room(client_socket):
+    global rooms
+    
+    have_room = False
+    room = None
+    
+    for room_name, room_clients in rooms.items():
+        for room_client in room_clients:
+            room = room_name
+            if room_client["socket"] == client_socket:
+                client_socket.send(f'Left room {room_name}'.encode())
+                rooms[room_name].remove(room_client)
+                have_room = True
+                break
+        if have_room:
+            break
+    
+    if have_room:
+        # Boardcast to all clients in the room
+        for room_client in rooms[room]:
+            room_client["socket"].send(f'{room_client["username"]} left the room'.encode())
+    
+    return have_room
 
 # Handle the client connection
 def handle_client(client_socket):
@@ -27,6 +52,7 @@ def handle_client(client_socket):
         
         if message.startswith("/"):
             command = message.split(" ")[0]
+            args = message.split(" ")[1:]
             if command == "/help":
                 commands = [
                     '/help: Show commands',
@@ -35,12 +61,13 @@ def handle_client(client_socket):
                     '/join <room_name> <username>: Join a room',
                     '/leave: Leave a room',
                     '/list: List all rooms',
+                    '/users: List all users in the room',
                     '/exit: Exit the server'
                 ]
                 client_socket.send('\n'.join(commands).encode())
             elif command == "/create":
                 try:
-                    room_name = message.split(" ")[1]
+                    room_name = args[0]
                     if (room_name == ""):
                         client_socket.send('Please enter a room name'.encode())
                         continue
@@ -52,11 +79,13 @@ def handle_client(client_socket):
                     rooms[room_name] = []
                     client_socket.send(f'Room {room_name} created'.encode())
                 except:
-                    client_socket.send('Please enter a room name or server error'.encode())
+                    print("Server error")
+                    client_socket.send('Please enter a room name'.encode())
             elif command == "/join":
+                leave_room(client_socket)
                 try:
-                    room_name = message.split(" ")[1]
-                    username = message.split(" ")[2]
+                    room_name = args[0]
+                    username = args[1]
                     
                     if room_name == "":
                         client_socket.send('Please enter a room name'.encode())
@@ -86,75 +115,65 @@ def handle_client(client_socket):
                         
                         # Boardcast to all clients in the room
                         for room_client in rooms[room_name]:
-                            if room_client["socket"] != client_socket:
-                                room_client["socket"].send(f'{username} joined the room'.encode())
+                            room_client["socket"].send(f'{username} joined the room'.encode())
                     else:
                         client_socket.send(f'Room {room_name} not found'.encode())
                 except:
+                    print("Server error")
                     client_socket.send('Please enter a room name and username'.encode())
             elif command == "/leave":
-                have_room = False
-                for room_name, room_clients in rooms.items():
-                    for room_client in room_clients:
-                        if room_client["socket"] == client_socket:
-                            rooms[room_name].remove(room_client)
-                            client_socket.send(f'Left room {room_name}'.encode())
-                            have_room = True
-                            break
+                have_room = leave_room(client_socket)
                 
                 if not have_room:
                     client_socket.send('System: You are not in a room'.encode())
             elif command == "/list":
-                try:
-                    rooms = [room_name for room_name in rooms.keys()]
-                    if len(rooms) > 0:
-                        client_socket.send(f'Rooms: {", ".join(rooms)}'.encode())
-                    else:
-                        client_socket.send('No rooms'.encode())
-                except:
-                    client_socket.send('No rooms'.encode())
-            elif command == "/exit":
+                room_names = list(rooms.keys())
+                if len(room_names) == 0:
+                    client_socket.send('No rooms available'.encode())
+                else:
+                    client_socket.send('\n'.join(room_names).encode())
+            elif command == "/users":
                 have_room = False
-                try:
-                    for room_name, room_clients in rooms.items():
-                        for room_client in room_clients:
-                            if room_client["socket"] == client_socket:
-                                rooms[room_name].remove(room_client)
-                                client_socket.send(f'Left room {room_name}'.encode())
-                                have_room = True
-                                break
-                        if have_room:
+                for room_name, room_clients in rooms.items():
+                    for room_client in room_clients:
+                        if room_client["socket"] == client_socket:
+                            have_room = True
+                            users = [room_client["username"] for room_client in room_clients]
+                            client_socket.send('\n'.join(users).encode())
                             break
-                    client_socket.send('Goodbye!'.encode())
-                except:
-                    client_socket.send('Goodbye!'.encode())
+                
+                if not have_room:
+                    client_socket.send('System: You are not in a room'.encode())
+            elif command == "/exit":
+                leave_room(client_socket)
                 break
             elif command == "/clear":
                 continue
             else:
                 client_socket.send('Invalid command'.encode())
         else:
-            # Send the message to all clients in the room with json format { message: "message", from: "client", time: "time" }
             try:
                 have_room = False
                 for room_name, room_clients in rooms.items():
                     for room_client in room_clients:
                         if room_client["socket"] == client_socket:
                             have_room = True
+                            sender_username = room_client["username"]
                             for room_client in room_clients:
-                                room_client["socket"].send(json.dumps({
+                                data = json.dumps({
                                     "message": message,
-                                    "from": room_client["username"],
-                                    "time": datetime.datetime.now().strftime("%H:%M:%S")
-                                }).encode())
+                                    "from": sender_username,
+                                    # Format the time as HH:MM:SS - DD/MM/YYYY
+                                    "time": datetime.datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
+                                })
+                                room_client["socket"].send(data.encode())
                             break
                 
                 if not have_room:
                     client_socket.send('System: You are not in a room'.encode())
-                    print('System: You are not in a room')
             except:
+                print('Server error')
                 client_socket.send('System: You are not in a room'.encode())
-                print('Error: You are not in a room')
     
     # Close the client connection
     client_socket.close()

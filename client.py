@@ -1,16 +1,15 @@
 import socket, threading, json, sys
 
-messages = []
-
 # Client socket for receiving messages from the server
 def receive_messages(client_socket: socket.socket):
     while True:
         try:
             message: str = client_socket.recv(1024).decode()
-            
+        
             if message.startswith("{") and message.endswith("}"):
                 data = json.loads(message)
-                print(f'{data["username"]} - {data["time"]}: {data["message"]}')
+                # print(data)
+                print(f'[{data["from"]}] {data["time"]}\n{data["message"]}\n')
             else:
                 print(message)
         except:
@@ -18,7 +17,7 @@ def receive_messages(client_socket: socket.socket):
 
 # Client socket for sending messages to the server
 def send_messages(client_socket):
-    while True:
+    while client_socket.fileno() != -1:
         message = input()
         
         if message == "/clear":
@@ -29,7 +28,6 @@ def send_messages(client_socket):
         client_socket.send(message.encode())
         if message == "/exit":
             client_socket.close()
-            exit()
 
 # Create a client socket
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -42,7 +40,3 @@ threading.Thread(target=receive_messages, args=(client_socket,)).start()
 
 # Send data to the server
 threading.Thread(target=send_messages, args=(client_socket,)).start()
-
-while True:
-    if threading.active_count() == 1:
-        break
