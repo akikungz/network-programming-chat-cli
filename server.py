@@ -32,8 +32,11 @@ def leave_room(client_socket):
     
     if have_room:
         # Boardcast to all clients in the room
-        for room_client in rooms[room]:
-            room_client["socket"].send(f'{room_client["username"]} left the room'.encode())
+        try:
+            for room_client in rooms[room]:
+                room_client["socket"].send(f'{room_client["username"]} left the room'.encode())
+        except:
+            pass
     
     return have_room
 
@@ -146,6 +149,7 @@ def handle_client(client_socket):
                     client_socket.send('System: You are not in a room'.encode())
             elif command == "/exit":
                 leave_room(client_socket)
+                client_socket.send('exit'.encode())
                 break
             elif command == "/clear":
                 continue
@@ -180,17 +184,28 @@ def handle_client(client_socket):
 
 # Accept client connections
 print('Server is listening for connections')
+print('Server listening on port 8081')
+# Get all host ip address
+host_ip = socket.gethostbyname(socket.gethostname())
+print(f'Host IP: {host_ip}')
+print('Type /exit to shutdown the server')
 
-try:
-    while True:
-        # Accept the client connection
-        client, addr = server.accept()
-        print(f'Accepted connection from {addr}')
+def handle_exit():
+    try:
+        while True:
+            if input() == "/exit":
+                print("Server is shutting down...")
+                exit()
+    except KeyboardInterrupt:
+        exit()
 
-        # Create a thread to handle the client connection
-        client_handler = threading.Thread(target=handle_client, args=(client,))
-        client_handler.start()
-except KeyboardInterrupt:
-    print('Server stopped')
-    server.close()
-    exit()
+threading.Thread(target=handle_exit).start()
+
+while True:
+    # Accept the client connection
+    client, addr = server.accept()
+    print(f'Accepted connection from {addr}')
+
+    # Create a thread to handle the client connection
+    client_handler = threading.Thread(target=handle_client, args=(client,))
+    client_handler.start()
