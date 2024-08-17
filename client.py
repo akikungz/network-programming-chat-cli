@@ -1,4 +1,6 @@
-import socket, threading, time, json
+import socket, threading, json, sys
+
+messages = []
 
 # Client socket for receiving messages from the server
 def receive_messages(client_socket: socket.socket):
@@ -6,9 +8,9 @@ def receive_messages(client_socket: socket.socket):
         try:
             message: str = client_socket.recv(1024).decode()
             
-            if message.startswith("{"):
+            if message.startswith("{") and message.endswith("}"):
                 data = json.loads(message)
-                print(f'{data["from"]}: {data["message"]}')
+                print(f'{data["username"]} - {data["time"]}: {data["message"]}')
             else:
                 print(message)
         except:
@@ -18,6 +20,12 @@ def receive_messages(client_socket: socket.socket):
 def send_messages(client_socket):
     while True:
         message = input()
+        
+        if message == "/clear":
+            sys.stdout.write("\033[H\033[J")
+            print("Type /help to see the commands")
+            continue
+        
         client_socket.send(message.encode())
         if message == "/exit":
             client_socket.close()
