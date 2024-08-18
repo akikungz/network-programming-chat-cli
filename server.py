@@ -23,6 +23,7 @@ def leave_room(client_socket):
         for room_client in room_clients:
             room = room_name
             if room_client["socket"] == client_socket:
+                user_leave = room_client["username"]
                 client_socket.send(f'Left room {room_name}'.encode())
                 rooms[room_name].remove(room_client)
                 have_room = True
@@ -34,7 +35,7 @@ def leave_room(client_socket):
         # Boardcast to all clients in the room
         try:
             for room_client in rooms[room]:
-                room_client["socket"].send(f'{room_client["username"]} left the room'.encode())
+                room_client["socket"].send(f'{user_leave} left the room'.encode())
         except:
             pass
     
@@ -142,6 +143,12 @@ def handle_client(client_socket):
                         if room_client["socket"] == client_socket:
                             have_room = True
                             users = [room_client["username"] for room_client in room_clients]
+                            # Highlight the current user
+                            for i, user in enumerate(users):
+                                if user == room_client["username"]:
+                                    users[i] = f'* {user}'
+                        
+                            users.sort()
                             client_socket.send('\n'.join(users).encode())
                             break
                 
@@ -195,7 +202,7 @@ def handle_exit():
         while True:
             if input() == "/exit":
                 print("Server is shutting down...")
-                exit()
+                exit(0)
     except KeyboardInterrupt:
         exit()
 
