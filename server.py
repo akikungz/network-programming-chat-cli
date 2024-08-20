@@ -1,4 +1,4 @@
-import socket, threading, datetime, json, time
+import socket, threading, datetime, json
 
 # Room object
 rooms: dict[str, list[dict]] = {}
@@ -202,6 +202,7 @@ def handle_exit():
         while True:
             if input() == "/exit":
                 print("Server is shutting down...")
+                server.close()
                 exit(0)
     except KeyboardInterrupt:
         exit()
