@@ -195,7 +195,7 @@ print('Server listening on port 8081')
 # Get all host ip address
 host_ip = socket.gethostbyname(socket.gethostname())
 print(f'Host IP: {host_ip}')
-print('Type /exit to shutdown the server')
+# print('Type /exit to shutdown the server')
 
 def handle_exit():
     try:
